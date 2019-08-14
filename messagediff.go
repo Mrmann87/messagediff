@@ -3,7 +3,6 @@ package messagediff
 import (
 	"fmt"
 	"reflect"
-	"sort"
 	"strings"
 	"time"
 	"unsafe"
@@ -14,17 +13,38 @@ import (
 func PrettyDiff(a, b interface{}, options ...Option) (string, bool) {
 	d, equal := DeepDiff(a, b, options...)
 	var dstr []string
-	for path, added := range d.Added {
-		dstr = append(dstr, fmt.Sprintf("added: %s = %#v\n", path.String(), added))
+	for path, values := range d.Results {
+		if values.A == nil && values.B == nil {
+			// This should never happen
+			continue
+		}
+		prettyDiff := ""
+		if values.A == nil {
+			// A is nil, which means a value was added
+			prettyDiff = prettyAdd(values.B)
+		} else if values.B == nil {
+			// B is nil, which means a value was removed
+			prettyDiff = prettyRemove(values.A)
+		} else {
+			// A and B are non-nil, but differ, which means the value was modified
+			prettyDiff = prettyRemove(values.A) + prettyAdd(values.B)
+		}
+		dstr = append(dstr, prettyPath(path) + prettyDiff)
 	}
-	for path, removed := range d.Removed {
-		dstr = append(dstr, fmt.Sprintf("removed: %s = %#v\n", path.String(), removed))
-	}
-	for path, modified := range d.Modified {
-		dstr = append(dstr, fmt.Sprintf("modified: %s = %#v\n", path.String(), modified))
-	}
-	sort.Strings(dstr)
 	return strings.Join(dstr, ""), equal
+}
+
+func prettyPath(path *Path) string {
+	str := path.String()
+	return fmt.Sprintf("\x1b[1m---a%s\x1b[0m\n\x1b[1m+++b%s\x1b[0m\n", str, str)
+}
+
+func prettyRemove(v interface{}) string {
+	return fmt.Sprintf("\x1b[22;%dm-%#v\x1b[0m\n", uint8(31), v)
+}
+
+func prettyAdd(v interface{}) string {
+	return fmt.Sprintf("\x1b[22;%dm+%#v\x1b[0m\n", uint8(32), v)
 }
 
 // DeepDiff does a deep comparison and returns the results.
@@ -40,10 +60,8 @@ func DeepDiff(a, b interface{}, options ...Option) (*Diff, bool) {
 
 func newDiff() *Diff {
 	return &Diff{
-		Added:    make(map[*Path]interface{}),
-		Removed:  make(map[*Path]interface{}),
-		Modified: make(map[*Path]interface{}),
-		visited:  make(map[visit]bool),
+		Results: make(map[*Path]DiffedValues),
+		visited: make(map[visit]bool),
 	}
 }
 
@@ -58,15 +76,15 @@ func (d *Diff) diff(aVal, bVal reflect.Value, path Path, opts *opts) bool {
 		return true
 	}
 	if !bVal.IsValid() {
-		d.Modified[&localPath] = nil
+		d.Results[&localPath] = DiffedValues{nil, nil}
 		return false
 	} else if !aVal.IsValid() {
-		d.Modified[&localPath] = bVal.Interface()
+		d.Results[&localPath] = DiffedValues{aVal.Interface(), bVal.Interface()}
 		return false
 	}
 
 	if aVal.Type() != bVal.Type() {
-		d.Modified[&localPath] = bVal.Interface()
+		d.Results[&localPath] = DiffedValues{aVal.Interface(), bVal.Interface()}
 		return false
 	}
 	kind := aVal.Kind()
@@ -108,7 +126,7 @@ func (d *Diff) diff(aVal, bVal reflect.Value, path Path, opts *opts) bool {
 			return true
 		}
 		if aVal.IsNil() || bVal.IsNil() {
-			d.Modified[&localPath] = bVal.Interface()
+			d.Results[&localPath] = DiffedValues{aVal.Interface(), bVal.Interface()}
 			return false
 		}
 	}
@@ -126,13 +144,13 @@ func (d *Diff) diff(aVal, bVal reflect.Value, path Path, opts *opts) bool {
 		if aLen > bLen {
 			for i := bLen; i < aLen; i++ {
 				localPath := append(localPath, SliceIndex(i))
-				d.Removed[&localPath] = aVal.Index(i).Interface()
+				d.Results[&localPath] = DiffedValues{aVal.Index(i).Interface(), nil}
 				equal = false
 			}
 		} else if aLen < bLen {
 			for i := aLen; i < bLen; i++ {
 				localPath := append(localPath, SliceIndex(i))
-				d.Added[&localPath] = bVal.Index(i).Interface()
+				d.Results[&localPath] = DiffedValues{nil, bVal.Index(i).Interface()}
 				equal = false
 			}
 		}
@@ -142,7 +160,7 @@ func (d *Diff) diff(aVal, bVal reflect.Value, path Path, opts *opts) bool {
 			bI := bVal.MapIndex(key)
 			localPath := append(localPath, MapKey{key.Interface()})
 			if !bI.IsValid() {
-				d.Removed[&localPath] = aI.Interface()
+				d.Results[&localPath] = DiffedValues{aI.Interface(), nil}
 				equal = false
 			} else if eq := d.diff(aI, bI, localPath, opts); !eq {
 				equal = false
@@ -153,7 +171,7 @@ func (d *Diff) diff(aVal, bVal reflect.Value, path Path, opts *opts) bool {
 			if !aI.IsValid() {
 				bI := bVal.MapIndex(key)
 				localPath := append(localPath, MapKey{key.Interface()})
-				d.Added[&localPath] = bI.Interface()
+				d.Results[&localPath] = DiffedValues{nil, bI.Interface()}
 				equal = false
 			}
 		}
@@ -164,7 +182,7 @@ func (d *Diff) diff(aVal, bVal reflect.Value, path Path, opts *opts) bool {
 			aTime := aVal.Interface().(time.Time)
 			bTime := bVal.Interface().(time.Time)
 			if !aTime.Equal(bTime) {
-				d.Modified[&localPath] = bVal.Interface().(time.Time).String()
+				d.Results[&localPath] = DiffedValues{aTime.String(), bTime.String()}
 				equal = false
 			}
 		} else {
@@ -191,7 +209,7 @@ func (d *Diff) diff(aVal, bVal reflect.Value, path Path, opts *opts) bool {
 		if reflect.DeepEqual(aVal.Interface(), bVal.Interface()) {
 			equal = true
 		} else {
-			d.Modified[&localPath] = bVal.Interface()
+			d.Results[&localPath] = DiffedValues{aVal.Interface(), bVal.Interface()}
 			equal = false
 		}
 	}
@@ -216,10 +234,15 @@ type visit struct {
 	typ reflect.Type
 }
 
+type DiffedValues struct {
+	A interface{}
+	B interface{}
+}
+
 // Diff represents a change in a struct.
 type Diff struct {
-	Added, Removed, Modified map[*Path]interface{}
-	visited                  map[visit]bool
+	Results map[*Path]DiffedValues
+	visited map[visit]bool
 }
 
 // Path represents a path to a changed datum.
