@@ -2,6 +2,8 @@
 
 A library for doing diffs of arbitrary Golang structs.
 
+Forked and modified from [d4l3k/messagediff](https://github.com/d4l3k/messagediff).
+
 If the unsafe package is available messagediff will diff unexported fields in
 addition to exported fields. This is primarily used for testing purposes as it
 allows for providing informative error messages.
@@ -9,13 +11,14 @@ allows for providing informative error messages.
 Optionally, fields in structs can be tagged as `testdiff:"ignore"` to make
 messagediff skip it when doing the comparison.
 
+The results of `PrettyDiff` are formatted and colorized to match the diff format produced by git.
 
 ## Example Usage
 In a normal file:
 ```go
 package main
 
-import "gopkg.in/d4l3k/messagediff.v1"
+import "github.com/Mrmann87/messagediff"
 
 type someStruct struct {
     A, b int
@@ -28,17 +31,23 @@ func main() {
     diff, equal := messagediff.PrettyDiff(a, b)
     /*
         diff =
-        `added: .C[1] = 2
-        modified: .b = 3`
+            ---a.b
+            +++b.b
+            -2
+            +3
+            ---a.C[1]
+            +++b.C[1]
+            +2
 
-        equal = false
+        equal =
+            false
     */
 }
 
 ```
 In a test:
 ```go
-import "gopkg.in/d4l3k/messagediff.v1"
+import "github.com/Mrmann87/messagediff"
 
 ...
 
@@ -60,7 +69,7 @@ this:
 ```go
 package main
 
-import "gopkg.in/d4l3k/messagediff.v1"
+import "github.com/Mrmann87/messagediff"
 
 type someStruct struct {
     A int
@@ -72,8 +81,8 @@ func main() {
     b := someStruct{1, 3}
     diff, equal := messagediff.PrettyDiff(a, b)
     /*
-        equal = true
         diff = ""
+        equal = true
     */
 }
 ```

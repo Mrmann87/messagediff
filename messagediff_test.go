@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/d4l3k/messagediff/testdata"
+	"github.com/Mrmann87/messagediff/testdata"
 )
 
 type testStruct struct {
@@ -36,9 +36,9 @@ type testCase struct {
 	equal bool
 }
 
-func checkTestCases(t *testing.T, testData []testCase) {
+func checkTestCases(t *testing.T, testData []testCase, opt ...Option) {
 	for i, td := range testData {
-		diff, equal := PrettyDiff(td.a, td.b)
+		diff, equal := PrettyDiff(td.a, td.b, opt...)
 		if diff != td.diff {
 			t.Errorf("%d. PrettyDiff(%#v, %#v) diff = %#v; not %#v", i, td.a, td.b, diff, td.diff)
 		}
@@ -53,49 +53,49 @@ func TestPrettyDiff(t *testing.T) {
 		{
 			true,
 			false,
-			"modified:  = false\n",
+			"\x1b[1m---a\x1b[0m\n\x1b[1m+++b\x1b[0m\n\x1b[22;31m-true\x1b[0m\n\x1b[22;32m+false\x1b[0m\n",
 			false,
 		},
 		{
 			true,
 			0,
-			"modified:  = 0\n",
+			"\x1b[1m---a\x1b[0m\n\x1b[1m+++b\x1b[0m\n\x1b[22;31m-true\x1b[0m\n\x1b[22;32m+0\x1b[0m\n",
 			false,
 		},
 		{
 			[]int{0, 1, 2},
 			[]int{0, 1, 2, 3},
-			"added: [3] = 3\n",
+			"\x1b[1m---a[3]\x1b[0m\n\x1b[1m+++b[3]\x1b[0m\n\x1b[22;32m+3\x1b[0m\n",
 			false,
 		},
 		{
 			[]int{0, 1, 2, 3},
 			[]int{0, 1, 2},
-			"removed: [3] = 3\n",
+			"\x1b[1m---a[3]\x1b[0m\n\x1b[1m+++b[3]\x1b[0m\n\x1b[22;31m-3\x1b[0m\n",
 			false,
 		},
 		{
 			[]int{0},
 			[]int{1},
-			"modified: [0] = 1\n",
+			"\x1b[1m---a[0]\x1b[0m\n\x1b[1m+++b[0]\x1b[0m\n\x1b[22;31m-0\x1b[0m\n\x1b[22;32m+1\x1b[0m\n",
 			false,
 		},
 		{
 			&[]int{0},
 			&[]int{1},
-			"modified: [0] = 1\n",
+			"\x1b[1m---a[0]\x1b[0m\n\x1b[1m+++b[0]\x1b[0m\n\x1b[22;31m-0\x1b[0m\n\x1b[22;32m+1\x1b[0m\n",
 			false,
 		},
 		{
 			map[string]int{"a": 1, "b": 2},
 			map[string]int{"b": 4, "c": 3},
-			"added: [\"c\"] = 3\nmodified: [\"b\"] = 4\nremoved: [\"a\"] = 1\n",
+			"\x1b[1m---a[\"a\"]\x1b[0m\n\x1b[1m+++b[\"a\"]\x1b[0m\n\x1b[22;31m-1\x1b[0m\n\x1b[1m---a[\"b\"]\x1b[0m\n\x1b[1m+++b[\"b\"]\x1b[0m\n\x1b[22;31m-2\x1b[0m\n\x1b[22;32m+4\x1b[0m\n\x1b[1m---a[\"c\"]\x1b[0m\n\x1b[1m+++b[\"c\"]\x1b[0m\n\x1b[22;32m+3\x1b[0m\n",
 			false,
 		},
 		{
 			testStruct{1, 2, []int{1}, [3]int{4, 5, 6}},
 			testStruct{1, 3, []int{1, 2}, [3]int{4, 5, 6}},
-			"added: .C[1] = 2\nmodified: .b = 3\n",
+			"\x1b[1m---a.C[1]\x1b[0m\n\x1b[1m+++b.C[1]\x1b[0m\n\x1b[22;32m+2\x1b[0m\n\x1b[1m---a.b\x1b[0m\n\x1b[1m+++b.b\x1b[0m\n\x1b[22;31m-2\x1b[0m\n\x1b[22;32m+3\x1b[0m\n",
 			false,
 		},
 		{
@@ -107,13 +107,13 @@ func TestPrettyDiff(t *testing.T) {
 		{
 			&struct{}{},
 			nil,
-			"modified:  = <nil>\n",
+			"\x1b[1m---a\x1b[0m\n\x1b[1m+++b\x1b[0m\n\x1b[22;31m-&struct {}{}\x1b[0m\n",
 			false,
 		},
 		{
 			nil,
 			&struct{}{},
-			"modified:  = &struct {}{}\n",
+			"\x1b[1m---a\x1b[0m\n\x1b[1m+++b\x1b[0m\n\x1b[22;32m+&struct {}{}\x1b[0m\n",
 			false,
 		},
 		{
@@ -125,7 +125,7 @@ func TestPrettyDiff(t *testing.T) {
 		{
 			testdata.MakeTest(10, "duck"),
 			testdata.MakeTest(20, "foo"),
-			"modified: .a = 20\nmodified: .b = \"foo\"\n",
+			"\x1b[1m---a.a\x1b[0m\n\x1b[1m+++b.a\x1b[0m\n\x1b[22;31m-10\x1b[0m\n\x1b[22;32m+20\x1b[0m\n\x1b[1m---a.b\x1b[0m\n\x1b[1m+++b.b\x1b[0m\n\x1b[22;31m-\"duck\"\x1b[0m\n\x1b[22;32m+\"foo\"\x1b[0m\n",
 			false,
 		},
 		{
@@ -137,7 +137,7 @@ func TestPrettyDiff(t *testing.T) {
 		{
 			time.Date(2017, 1, 1, 0, 0, 0, 0, &time.Location{}),
 			time.Date(2018, 7, 24, 14, 06, 59, 0, time.UTC),
-			"modified:  = \"2018-07-24 14:06:59 +0000 UTC\"\n",
+			"\x1b[1m---a\x1b[0m\n\x1b[1m+++b\x1b[0m\n\x1b[22;31m-\"2017-01-01 00:00:00 +0000 UTC\"\x1b[0m\n\x1b[22;32m+\"2018-07-24 14:06:59 +0000 UTC\"\x1b[0m\n",
 			false,
 		},
 	}
@@ -155,7 +155,7 @@ func TestPrettyDiffRecursive(t *testing.T) {
 		{
 			newRecursiveStruct(1),
 			newRecursiveStruct(2),
-			"modified: .Child.Key = 2\nmodified: .Key = 2\n",
+			"\x1b[1m---a.Child.Key\x1b[0m\n\x1b[1m+++b.Child.Key\x1b[0m\n\x1b[22;31m-1\x1b[0m\n\x1b[22;32m+2\x1b[0m\n\x1b[1m---a.Key\x1b[0m\n\x1b[1m+++b.Key\x1b[0m\n\x1b[22;31m-1\x1b[0m\n\x1b[22;32m+2\x1b[0m\n",
 			false,
 		},
 	}
@@ -185,52 +185,49 @@ type ignoreStruct struct {
 }
 
 func TestIgnoreTag(t *testing.T) {
-	s1 := ignoreStruct{1, 1, [3]int{1, 2, 3}, [3]int{4, 5, 6}}
-	s2 := ignoreStruct{2, 1, [3]int{1, 8, 3}, [3]int{4, 5, 6}}
-
-	diff, equal := PrettyDiff(s1, s2)
-	if !equal {
-		t.Errorf("Expected structs to be equal. Diff:\n%s", diff)
+	testData := []testCase{
+		{
+			ignoreStruct{1, 1, [3]int{1, 2, 3}, [3]int{4, 5, 6}},
+			ignoreStruct{2, 1, [3]int{1, 8, 3}, [3]int{4, 5, 6}},
+			"",
+			true,
+		},
+		{
+			ignoreStruct{1, 1, [3]int{1, 2, 3}, [3]int{4, 5, 6}},
+			ignoreStruct{2, 2, [3]int{1, 8, 3}, [3]int{4, 9, 6}},
+			"\x1b[1m---a.a\x1b[0m\n\x1b[1m+++b.a\x1b[0m\n\x1b[22;31m-1\x1b[0m\n\x1b[22;32m+2\x1b[0m\n\x1b[1m---a.b[1]\x1b[0m\n\x1b[1m+++b.b[1]\x1b[0m\n\x1b[22;31m-5\x1b[0m\n\x1b[22;32m+9\x1b[0m\n",
+			false,
+		},
 	}
-
-	s2 = ignoreStruct{2, 2, [3]int{1, 8, 3}, [3]int{4, 9, 6}}
-	diff, equal = PrettyDiff(s1, s2)
-	if equal {
-		t.Errorf("Expected structs NOT to be equal.")
-	}
-	expect := "modified: .a = 2\nmodified: .b[1] = 9\n"
-	if diff != expect {
-		t.Errorf("Expected diff to be:\n%v\nbut got:\n%v", expect, diff)
-	}
+	checkTestCases(t, testData)
 }
 
 func TestIgnoreStructFieldOption(t *testing.T) {
-	a := struct {
-		X string
-		Y string
-	}{
-		X: "x",
-		Y: "y",
-	}
-	b := struct {
-		X string
-		Y string
-	}{
-		X: "xx",
-		Y: "y",
+	testData := []testCase{
+		{
+			struct {
+				X string
+				Y string
+			}{
+				"x",
+				"y",
+			},
+			struct {
+				X string
+				Y string
+			}{
+				"xx",
+				"y",
+			},
+			"",
+			false,
+		},
 	}
 
-	diff, equal := PrettyDiff(a, b, IgnoreStructField("X"))
-	if !equal {
-		t.Errorf("Expected structs to be equal. Diff:\n%s", diff)
-	}
+	testData[0].equal = true
+	checkTestCases(t, testData, IgnoreStructField("X"))
 
-	diff, equal = PrettyDiff(a, b, IgnoreStructField("Y"))
-	if equal {
-		t.Errorf("Expected structs NOT to be equal.")
-	}
-	expect := "modified: .X = \"xx\"\n"
-	if diff != expect {
-		t.Errorf("Expected diff to be:\n%v\nbut got:\n%v", expect, diff)
-	}
+	testData[0].diff = "\x1b[1m---a.X\x1b[0m\n\x1b[1m+++b.X\x1b[0m\n\x1b[22;31m-\"x\"\x1b[0m\n\x1b[22;32m+\"xx\"\x1b[0m\n"
+	testData[0].equal = false
+	checkTestCases(t, testData, IgnoreStructField("Y"))
 }
